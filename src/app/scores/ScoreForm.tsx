@@ -1,13 +1,13 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 import { submitScore } from "../actions/submitScore";
 
 type ActionState = { message?: string; success: boolean } | null;
 
 export function ScoreForm() {
   const [state, formAction, isPending] = useActionState<ActionState, FormData>(
-    async (prevState, formData) => {
+    async (_prevState, formData) => {
       const parsedScore = parseInt(formData.get("score") as string, 10);
       return await submitScore(parsedScore);
     },
@@ -17,7 +17,7 @@ export function ScoreForm() {
   return (
     <form action={formAction} className="flex flex-col gap-4 mt-6">
       <div className="flex flex-col gap-2">
-        <label htmlFor="score" className="text-sm font-medium text-slate-300">
+        <label htmlFor="score" className="text-sm font-medium text-muted-foreground">
           Enter Your Score
         </label>
         <input
@@ -27,7 +27,7 @@ export function ScoreForm() {
           min="0"
           max="150"
           required
-          className="bg-slate-800 border border-slate-700 text-white rounded-lg p-3 outline-none focus:border-amber-500 transition-colors"
+          className="bg-muted border border-border text-foreground rounded-lg p-3 outline-none focus:border-primary transition-colors"
           placeholder="e.g. 72"
         />
       </div>
@@ -41,7 +41,7 @@ export function ScoreForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50"
+        className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50"
       >
         {isPending ? "Submitting..." : "Submit Score"}
       </button>

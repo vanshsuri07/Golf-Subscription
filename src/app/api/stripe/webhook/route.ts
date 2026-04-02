@@ -25,6 +25,13 @@ export async function POST(req: Request) {
     return new NextResponse(`Webhook Error: ${error.message}`, { status: 400 });
   }
 
+  // Helper to safely convert Stripe Unix timestamp (seconds) to JS Date
+  const safeToDate = (timestamp: number | null | undefined): Date => {
+    if (typeof timestamp !== "number" || isNaN(timestamp)) return new Date();
+    const date = new Date(timestamp * 1000);
+    return isNaN(date.getTime()) ? new Date() : date;
+  };
+
   try {
     switch (event.type) {
       case "checkout.session.completed": {
@@ -35,14 +42,14 @@ export async function POST(req: Request) {
           const userId = session.metadata?.user_id;
 
           if (userId && subscriptionId) {
-            const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any;
             await upsertSubscription({
               userId,
               stripeCustomerId: customerId,
               stripeSubscriptionId: subscriptionId,
               status: subscription.status,
               priceId: subscription.items.data[0]?.price.id || null,
-              currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+              currentPeriodEnd: safeToDate(subscription.current_period_end),
               cancelAtPeriodEnd: subscription.cancel_at_period_end,
             });
           }
@@ -52,7 +59,7 @@ export async function POST(req: Request) {
       
       case "customer.subscription.created":
       case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any; // Using any due to Dahlia API restructuring
         
         let userId = subscription.metadata.user_id;
         
@@ -74,7 +81,7 @@ export async function POST(req: Request) {
             stripeSubscriptionId: subscription.id,
             status: subscription.status,
             priceId: subscription.items.data[0]?.price.id || null,
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            currentPeriodEnd: safeToDate(subscription.current_period_end),
             cancelAtPeriodEnd: subscription.cancel_at_period_end,
           });
         }
@@ -82,22 +89,23 @@ export async function POST(req: Request) {
       }
 
       case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any; // Using any due to Dahlia API restructuring
         await updateSubscriptionStatus(
           subscription.id,
           'canceled',
-          new Date(subscription.current_period_end * 1000),
+          safeToDate(subscription.current_period_end),
           subscription.cancel_at_period_end
         );
         break;
       }
 
       case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        if (invoice.subscription) {
-          const subscriptionId = invoice.subscription as string;
+        const invoice = event.data.object as any; // Using any due to Dahlia API property restructuring
+        const subscriptionId = invoice.subscription || invoice.parent?.subscription_details?.subscription;
+        
+        if (subscriptionId) {
           // Subscriptions might become active after a payment failure when the new payment succeeds
-          await updateSubscriptionStatus(subscriptionId, 'active');
+          await updateSubscriptionStatus(subscriptionId as string, 'active');
         }
 
         // Allocate revenue to pool
@@ -126,11 +134,12 @@ export async function POST(req: Request) {
       }
 
       case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
-        if (invoice.subscription) {
-          const subscriptionId = invoice.subscription as string;
+        const invoice = event.data.object as any;
+        const subscriptionId = invoice.subscription || invoice.parent?.subscription_details?.subscription;
+
+        if (subscriptionId) {
           // Mark as past due
-          await updateSubscriptionStatus(subscriptionId, 'past_due');
+          await updateSubscriptionStatus(subscriptionId as string, 'past_due');
         }
         break;
       }

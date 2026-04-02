@@ -1,6 +1,7 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { pool } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
@@ -10,26 +11,34 @@ export async function submitScore(score: number): Promise<{ success: boolean; me
     if (typeof score !== "number" || isNaN(score) || !Number.isInteger(score)) {
       return { success: false, message: "Score must be a valid integer." };
     }
-    
-    if (score < 0 || score > 150) { // Using 150 as a reasonable upper limit for golf, minimum 0.
+
+    if (score < 0 || score > 150) {
       return { success: false, message: "Score must be between 0 and 150." };
     }
 
-    // 2. Check auth
-    const session = await auth();
-    if (!session || !session.user || !session.user.id) {
+    // 2. Check auth via Supabase
+    const supabase = createClient(await cookies());
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
       return { success: false, message: "Unauthorized." };
     }
 
-    // 3. Check subscriber role
-    if (session.user.role !== "subscriber") {
+    // 3. Check role
+    const { data: profile } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (profile?.role !== "subscriber") {
       return { success: false, message: "Only subscribers can submit scores." };
     }
 
     // 4. Check active subscription
     const subResult = await pool.query(
       `SELECT status FROM public.subscriptions WHERE user_id = $1 AND status = 'active' LIMIT 1`,
-      [session.user.id] // Use NextAuth user ID
+      [user.id]
     );
 
     if (subResult.rows.length === 0) {
@@ -39,11 +48,12 @@ export async function submitScore(score: number): Promise<{ success: boolean; me
     // 5. Call RPC submit_score
     await pool.query(
       `SELECT public.submit_score($1, $2)`,
-      [session.user.id, score]
+      [user.id, score]
     );
 
     revalidatePath("/scores");
-    
+    revalidatePath("/dashboard");
+
     return { success: true };
   } catch (error) {
     console.error("Failed to submit score:", error);

@@ -1,27 +1,37 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { pool } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 export async function executeDraw(drawId: string) {
   try {
-    const session = await auth();
+    const supabase = createClient(await cookies());
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!session || !session.user) {
-      throw new Error("Unauthorized");
+    if (!user) {
+      return { success: false, error: "Unauthorized" };
     }
 
-    if (session.user.role !== "admin") {
-      throw new Error("Unauthorized: Only admins can execute draws");
+    // Check admin role
+    const { data: profile } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (profile?.role !== "admin") {
+      return { success: false, error: "Unauthorized: Only admins can execute draws" };
     }
 
     const { rows } = await pool.query(
-      `select public.execute_draw($1) as winner`,
+      `SELECT public.execute_draw($1) as winner`,
       [drawId]
     );
 
-    revalidatePath("/admin/draws"); // Revalidate admin draws path if it exists
+    revalidatePath("/admin");
+    revalidatePath("/dashboard");
 
     return { success: true, winner: rows[0].winner };
   } catch (error: any) {

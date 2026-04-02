@@ -1,13 +1,27 @@
-import { auth } from "@/auth";
-import { pool } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { pool } from "@/lib/db";
 import { WinnersTable } from "./WinnersTable";
 
+export const metadata = {
+  title: "Winner Verification — GolfSub Admin",
+};
+
 export default async function AdminWinnersPage() {
-  const session = await auth();
-  
-  if (session?.user?.role !== "admin") {
-    redirect("/");
+  const supabase = createClient(await cookies());
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    redirect("/dashboard");
   }
 
   // Get winners
@@ -39,7 +53,7 @@ export default async function AdminWinnersPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8 text-white">Winner Verification Dashboard</h1>
+      <h1 className="text-3xl font-bold mb-8">Winner Verification Dashboard</h1>
       <WinnersTable initialWinners={winners} />
     </div>
   );

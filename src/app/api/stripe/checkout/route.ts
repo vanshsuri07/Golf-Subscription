@@ -1,16 +1,43 @@
 import { stripe } from "@/lib/stripe";
-import { requireAuth } from "@/lib/permissions";
+import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 
 export async function POST(req: Request) {
   try {
-    const session = await requireAuth();
-    const userId = session.user?.id;
-    const email = session.user?.email;
+    const supabase = createClient(await cookies());
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!userId) {
+    if (!user) {
       return new NextResponse("Unauthorized", { status: 401 });
+    }
+
+    const userId = user.id;
+    const email = user.email;
+
+    // 0. Ensure user exists in public.users (safety sync for trigger delay)
+    const userCheck = await pool.query("SELECT id FROM public.users WHERE id = $1", [userId]);
+    if (userCheck.rows.length === 0) {
+      console.log(`User ${userId} not found in public.users, syncing now...`);
+      await pool.query(
+        `INSERT INTO public.users (id, email, full_name, role) 
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id) DO NOTHING`,
+        [userId, email, user.user_metadata?.full_name || "", "subscriber"]
+      );
+    }
+
+    // Parse request body for plan selection
+    const body = await req.json().catch(() => ({}));
+    const plan = body.plan || "monthly"; // "monthly" or "yearly"
+
+    const priceId = plan === "yearly"
+      ? process.env.STRIPE_YEARLY_PRICE_ID
+      : process.env.STRIPE_PRO_PRICE_ID;
+
+    if (!priceId) {
+      return new NextResponse("Price ID not configured", { status: 500 });
     }
 
     // 1. Fetch user to see if they have a stripe customer id
@@ -39,7 +66,6 @@ export async function POST(req: Request) {
           [customerId, userId]
         );
       } else {
-        // We create a skeleton subscription row with unpaid/incomplete status
         await pool.query(
           `INSERT INTO public.subscriptions (user_id, stripe_customer_id, status)
            VALUES ($1, $2, 'incomplete')`,
@@ -55,7 +81,7 @@ export async function POST(req: Request) {
       payment_method_types: ["card"],
       line_items: [
         {
-          price: process.env.STRIPE_PRO_PRICE_ID, // Could also be passed in body
+          price: priceId,
           quantity: 1,
         },
       ],
