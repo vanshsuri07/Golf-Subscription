@@ -28,13 +28,15 @@ export function DialogTrigger({
   children,
 }: {
   asChild?: boolean
-  children: React.ReactElement
+  children: React.ReactElement<any>
 }) {
   const ctx = React.useContext(DialogContext)
   return React.cloneElement(children, {
-    onClick: (e: any) => {
+    onClick: (e: React.MouseEvent) => {
       ctx?.onOpenChange(true)
-      if (children.props.onClick) children.props.onClick(e)
+      if (children.props && typeof children.props.onClick === 'function') {
+        children.props.onClick(e)
+      }
     },
   })
 }

@@ -5,7 +5,7 @@ export const DURATIONS = {
   base: 0.25,
   slow: 0.4,
   pageTransition: 0.5,
-}
+} as const
 
 export const EASINGS = {
   easeOut: [0.25, 1, 0.5, 1],
@@ -13,7 +13,7 @@ export const EASINGS = {
   easeInOut: [0.25, 0.1, 0.25, 1],
   springSoft: { type: 'spring', stiffness: 300, damping: 24, mass: 0.5 },
   springBouncy: { type: 'spring', stiffness: 400, damping: 15 },
-}
+} as const
 
 export const VARIANTS = {
   pageInitial: {

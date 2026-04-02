@@ -12,7 +12,7 @@ export async function submitScore(score: number): Promise<{ success: boolean; me
       return { success: false, message: "Score must be a valid integer." };
     }
 
-    if (score < 0 || score > 150) {
+    if (score < 1 || score > 45) {
       return { success: false, message: "Score must be between 0 and 150." };
     }
 

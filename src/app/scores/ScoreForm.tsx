@@ -25,10 +25,10 @@ export function ScoreForm() {
           name="score"
           type="number"
           min="0"
-          max="150"
+          max="45s"
           required
           className="bg-muted border border-border text-foreground rounded-lg p-3 outline-none focus:border-primary transition-colors"
-          placeholder="e.g. 72"
+          placeholder="e.g. 36"
         />
       </div>
 
