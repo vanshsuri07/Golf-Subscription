@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { createDraw, runDraw } from "../actions/draw-actions";
+import { createDraw, runDraw, syncEntries } from "../actions/draw-actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,17 @@ export function DrawControl({ draws }: { draws: any[] }) {
         alert("Draw executed successfully! Winner selected.");
       } catch (err: any) {
         alert("Error executing draw: " + err.message);
+      }
+    });
+  };
+
+  const handleSync = async (drawId: string) => {
+    startTransition(async () => {
+      try {
+        await syncEntries(drawId);
+        alert("Entries synchronized successfully.");
+      } catch (err: any) {
+        alert("Error syncing entries: " + err.message);
       }
     });
   };
@@ -65,6 +76,19 @@ export function DrawControl({ draws }: { draws: any[] }) {
               </select>
             </div>
 
+            <div className="space-y-2">
+              <label htmlFor="prize_amount" className="text-sm font-medium">Initial Prize Pool ($)</label>
+              <input
+                id="prize_amount"
+                name="prize_amount"
+                type="number"
+                step="0.01"
+                min="0"
+                className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder="e.g. 500.00"
+              />
+            </div>
+
             <Button type="submit" disabled={isPending} className="w-full">
               {isPending ? "Processing..." : "Create Event"}
             </Button>
@@ -95,16 +119,26 @@ export function DrawControl({ draws }: { draws: any[] }) {
                   <TableCell>
                     {d.is_active ? <Badge>Active</Badge> : <Badge variant="secondary">Executed</Badge>}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right flex items-center justify-end gap-2">
                     {d.is_active && (
-                      <Button
-                        size="sm"
-                        variant="default"
-                        disabled={isPending}
-                        onClick={() => handleRun(d.id)}
-                      >
-                        Run Engine
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isPending}
+                          onClick={() => handleSync(d.id)}
+                        >
+                          Sync
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          disabled={isPending}
+                          onClick={() => handleRun(d.id)}
+                        >
+                          Run Engine
+                        </Button>
+                      </>
                     )}
                   </TableCell>
                 </TableRow>

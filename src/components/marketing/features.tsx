@@ -12,12 +12,12 @@ const features = [
   },
   {
     name: "Support Charity",
-    description: "Hit your targets and trigger automatic contributions to local charities on your behalf.",
+    description: "A portion of every subscription goes directly to your chosen charity.",
     icon: HeartHandshake,
   },
   {
     name: "Win Exclusive Draws",
-    description: "Active subscribers who meet their score targets enter our transparent monthly prize pools.",
+    description: "Enter monthly draws using our 3/4/5 number match system. Match 3, 4, or 5 numbers to win escalating cash prizes from the verified pool.",
     icon: Trophy,
   },
   {

@@ -56,7 +56,7 @@ export default function LoginForm() {
           setError(error.message);
           return;
         }
-        setSuccessMessage("Account created! Check your email to confirm, then sign in.");
+        setSuccessMessage("Account created!");
         setIsLogin(true);
       }
     } catch (err: any) {

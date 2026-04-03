@@ -38,7 +38,8 @@ export default async function DashboardPage() {
     pool.query(`SELECT * FROM public.draw_events WHERE is_active = true ORDER BY created_at DESC LIMIT 1`),
     pool.query(`SELECT SUM(amount) as total FROM public.charity_contributions WHERE user_id = $1`, [user.id]),
     pool.query(`
-      SELECT dw.*, de.name as draw_name 
+      SELECT dw.*, de.name as draw_name,
+        (SELECT pp.total_amount FROM public.prize_pools pp WHERE pp.draw_id = de.id LIMIT 1) as prize_amount
       FROM public.draw_winners dw 
       JOIN public.draw_events de ON dw.draw_id = de.id 
       WHERE dw.user_id = $1 

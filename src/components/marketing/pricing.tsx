@@ -14,10 +14,9 @@ const plans = [
     period: "/mo",
     description: "Full access to charity draws & prizes, billed monthly.",
     features: [
-      "Submit unlimited scores",
-      "Rolling average tracking",
+      "Rolling 5-score tracking",
       "Entry to monthly draws",
-      "Charity contributions triggered",
+      "A portion of every subscription goes directly to your chosen charity.",
       "Verified winner badge",
       "Priority support",
     ],
@@ -56,12 +55,21 @@ export function Pricing() {
         body: JSON.stringify({ plan }),
       });
 
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error("Failed to checkout");
+      }
+
       const data = await res.json();
 
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert("Failed to create checkout session. Please sign in first.");
+        alert("Failed to create checkout session. Please try again.");
         setLoading(null);
       }
     } catch (err) {

@@ -32,6 +32,7 @@ export function DrawsTable({ recentWins }: { recentWins: any[] }) {
           <TableHeader>
             <TableRow>
               <TableHead>Draw</TableHead>
+              <TableHead>Prize</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Date</TableHead>
             </TableRow>
@@ -40,6 +41,9 @@ export function DrawsTable({ recentWins }: { recentWins: any[] }) {
             {recentWins.map((win) => (
               <TableRow key={win.id}>
                 <TableCell className="font-medium">{win.draw_name || "Legacy Draw"}</TableCell>
+                <TableCell className="font-semibold text-emerald-600">
+                  ${win.prize_amount ? Number(win.prize_amount).toFixed(2) : "0.00"}
+                </TableCell>
                 <TableCell>
                   <Badge variant={win.status === "paid" ? "success" : "secondary"}>
                     {(win.status || "pending").replace("_", " ")}

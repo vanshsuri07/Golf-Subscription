@@ -10,7 +10,7 @@ export function ScoreCard({ scores }: { scores: any[] }) {
     ? latestFive.reduce((acc, curr) => acc + curr.score, 0) / latestFive.length 
     : 0;
   
-  const minRequired = 3;
+  const minRequired = 5;
   const isEligible = latestFive.length >= minRequired;
   const progressPercent = Math.min((latestFive.length / minRequired) * 100, 100);
 

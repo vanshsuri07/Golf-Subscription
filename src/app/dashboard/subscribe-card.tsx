@@ -17,6 +17,15 @@ export function SubscribeCard() {
         body: JSON.stringify({ plan }),
       });
 
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error("Failed to checkout");
+      }
+
       const data = await res.json();
 
       if (data.url) {
@@ -57,8 +66,8 @@ export function SubscribeCard() {
             </div>
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Entry to monthly draws</li>
-              <li>• Unlimited score tracking</li>
-              <li>• Charity contributions</li>
+              <li>• Rolling 5-score tracking</li>
+              <li>• A portion of every subscription goes directly to your chosen charity.</li>
             </ul>
             <Button
               className="w-full"

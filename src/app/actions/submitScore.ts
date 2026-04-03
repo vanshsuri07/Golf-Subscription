@@ -13,7 +13,7 @@ export async function submitScore(score: number): Promise<{ success: boolean; me
     }
 
     if (score < 1 || score > 45) {
-      return { success: false, message: "Score must be between 0 and 150." };
+      return { success: false, message: "Score must be between 0 and 45." };
     }
 
     // 2. Check auth via Supabase

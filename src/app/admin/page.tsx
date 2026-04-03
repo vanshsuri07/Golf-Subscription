@@ -51,7 +51,8 @@ export default async function AdminDashboardPage() {
     `),
     pool.query(`
       SELECT u.id, u.full_name, u.email, u.role, u.created_at,
-        (SELECT s.status FROM public.subscriptions s WHERE s.user_id = u.id AND s.status = 'active' LIMIT 1) as sub_status
+        (SELECT s.status FROM public.subscriptions s WHERE s.user_id = u.id AND s.status = 'active' LIMIT 1) as sub_status,
+        (SELECT last_5_scores FROM public.user_score_summary uss WHERE uss.user_id = u.id LIMIT 1) as scores
       FROM public.users u 
       ORDER BY u.created_at DESC LIMIT 50
     `),

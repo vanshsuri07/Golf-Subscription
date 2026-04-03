@@ -43,9 +43,13 @@ export async function POST(req: Request) {
     // 1. Fetch user to see if they have a stripe customer id
     let customerId: string | undefined;
     const subResult = await pool.query(
-      "SELECT stripe_customer_id, id FROM public.subscriptions WHERE user_id = $1 LIMIT 1",
+      "SELECT stripe_customer_id, status, id FROM public.subscriptions WHERE user_id = $1 LIMIT 1",
       [userId]
     );
+
+    if (subResult.rows.length > 0 && subResult.rows[0].status === 'active') {
+      return NextResponse.json({ url: "/dashboard" });
+    }
 
     if (subResult.rows.length > 0 && subResult.rows[0].stripe_customer_id) {
       customerId = subResult.rows[0].stripe_customer_id;

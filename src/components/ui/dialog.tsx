@@ -8,14 +8,27 @@ const DialogContext = React.createContext<{
 } | null>(null)
 
 export function Dialog({
-  open,
-  onOpenChange,
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
   children,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   children: React.ReactNode
 }) {
+  const [internalOpen, setInternalOpen] = React.useState(false)
+  const isControlled = openProp !== undefined
+
+  const open = isControlled ? openProp : internalOpen
+  const onOpenChange = (newOpen: boolean) => {
+    if (!isControlled) {
+      setInternalOpen(newOpen)
+    }
+    if (onOpenChangeProp) {
+      onOpenChangeProp(newOpen)
+    }
+  }
+
   return (
     <DialogContext.Provider value={{ open, onOpenChange }}>
       {children}
