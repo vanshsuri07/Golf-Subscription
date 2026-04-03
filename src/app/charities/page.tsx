@@ -5,6 +5,9 @@ import { HeartHandshake } from "lucide-react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
+// Prevent static pre-rendering at build time — data must be fetched at request time
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Charity Directory — GolfSub",
   description: "Explore the charities supported by GolfSub subscriptions.",
