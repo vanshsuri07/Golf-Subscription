@@ -4,10 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-export async function updateWinnerStatus(winnerId: string, status: string, reason?: string) {
+export async function setPrizePool(drawId: string, amount: number) {
   const supabase = createClient(await cookies());
 
-  // Verify admin
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
@@ -19,20 +18,15 @@ export async function updateWinnerStatus(winnerId: string, status: string, reaso
 
   if (profile?.role !== "admin") throw new Error("Forbidden");
 
-  const { error } = await supabase.rpc("update_winner_status", {
-    p_winner_id: winnerId,
-    p_new_status: status,
-    p_admin_id: user.id,
-    p_reason: reason || null,
+  if (amount < 0) throw new Error("Prize pool amount cannot be negative");
+
+  const { error } = await supabase.rpc("set_prize_pool", {
+    p_draw_id: drawId,
+    p_amount: amount,
   });
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 
   revalidatePath("/admin");
-  revalidatePath("/admin/winners");
   revalidatePath("/dashboard");
-  revalidatePath("/dashboard", "page");
 }
-

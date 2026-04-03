@@ -6,8 +6,12 @@ import { ScoreCard } from "./score-card";
 import { CharityCard } from "./charity-card";
 import { DrawsTable } from "./draws-table";
 import { SubscribeCard } from "./subscribe-card";
+import { PrizePoolCard } from "./prize-pool-card";
+import { WalletCard } from "./wallet-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Dashboard — GolfSub",
@@ -31,6 +35,7 @@ export default async function DashboardPage() {
     charityContributionsResult,
     recentWinsResult,
     userCharityResult,
+    activePrizePoolResult,
   ] = await Promise.all([
     pool.query(`SELECT * FROM public.users WHERE id = $1`, [user.id]),
     pool.query(`SELECT * FROM public.subscriptions WHERE user_id = $1 AND status = 'active' LIMIT 1`, [user.id]),
@@ -39,7 +44,9 @@ export default async function DashboardPage() {
     pool.query(`SELECT SUM(amount) as total FROM public.charity_contributions WHERE user_id = $1`, [user.id]),
     pool.query(`
       SELECT dw.*, de.name as draw_name,
-        (SELECT pp.total_amount FROM public.prize_pools pp WHERE pp.draw_id = de.id LIMIT 1) as prize_amount
+        (SELECT pp.total_amount FROM public.prize_pools pp WHERE pp.draw_id = de.id LIMIT 1) as prize_amount,
+        dw.net_payout,
+        dw.charity_deduction
       FROM public.draw_winners dw 
       JOIN public.draw_events de ON dw.draw_id = de.id 
       WHERE dw.user_id = $1 
@@ -51,6 +58,15 @@ export default async function DashboardPage() {
       LEFT JOIN public.charities c ON u.charity_id = c.id 
       WHERE u.id = $1
     `, [user.id]),
+    // Active draw prize pool for the prize card
+    pool.query(`
+      SELECT de.name as draw_name, pp.total_amount, pp.charity_rate
+      FROM public.draw_events de
+      JOIN public.prize_pools pp ON pp.draw_id = de.id
+      WHERE de.is_active = true
+      ORDER BY de.created_at DESC
+      LIMIT 1
+    `),
   ]);
 
   const profile = profileResult.rows[0] || null;
@@ -61,6 +77,20 @@ export default async function DashboardPage() {
   const recentWins = recentWinsResult.rows || [];
   const userCharity = userCharityResult.rows[0] || null;
   const hasSubscription = !!subscription;
+
+  // Wallet / winning data
+  const walletBalance = Number(profile?.wallet_balance) || 0;
+  const totalGrossWinnings = recentWins.reduce((sum: number, w: any) => {
+    return sum + (w.prize_amount ? Number(w.prize_amount) : 0);
+  }, 0);
+  const totalCharityDonated = recentWins.reduce((sum: number, w: any) => {
+    return sum + (w.charity_deduction ? Number(w.charity_deduction) : 0);
+  }, 0);
+
+  // Active prize pool
+  const prizePoolRow = activePrizePoolResult.rows[0] || null;
+  const activePrizePool = Number(prizePoolRow?.total_amount) || 0;
+  const activePrizeCharityRate = Number(prizePoolRow?.charity_rate) || 0.20;
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-8 max-w-7xl">
@@ -105,6 +135,20 @@ export default async function DashboardPage() {
 
         {/* Charity Impact */}
         <CharityCard charityName={userCharity?.charity_name} totalContribution={totalContributions} />
+      </div>
+
+      {/* Prize Pool + Wallet row */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <PrizePoolCard
+          drawName={prizePoolRow?.draw_name || activeDraw?.name || null}
+          prizePool={activePrizePool}
+          charityRate={activePrizeCharityRate}
+        />
+        <WalletCard
+          walletBalance={walletBalance}
+          totalGrossWinnings={totalGrossWinnings}
+          totalCharityDonated={totalCharityDonated}
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

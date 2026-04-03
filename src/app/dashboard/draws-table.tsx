@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { HeartHandshake } from "lucide-react";
 
 export function DrawsTable({ recentWins }: { recentWins: any[] }) {
   if (!recentWins || recentWins.length === 0) {
@@ -32,28 +33,62 @@ export function DrawsTable({ recentWins }: { recentWins: any[] }) {
           <TableHeader>
             <TableRow>
               <TableHead>Draw</TableHead>
-              <TableHead>Prize</TableHead>
+              <TableHead>Prize Pool</TableHead>
+              <TableHead>Net Credited</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Date</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {recentWins.map((win) => (
-              <TableRow key={win.id}>
-                <TableCell className="font-medium">{win.draw_name || "Legacy Draw"}</TableCell>
-                <TableCell className="font-semibold text-emerald-600">
-                  ${win.prize_amount ? Number(win.prize_amount).toFixed(2) : "0.00"}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={win.status === "paid" ? "success" : "secondary"}>
-                    {(win.status || "pending").replace("_", " ")}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {win.selected_at ? new Date(win.selected_at).toLocaleDateString() : "—"}
-                </TableCell>
-              </TableRow>
-            ))}
+            {recentWins.map((win) => {
+              const prizeAmount = win.prize_amount ? Number(win.prize_amount) : 0;
+              const netPayout = win.net_payout != null ? Number(win.net_payout) : null;
+              const charityDeduction = win.charity_deduction != null ? Number(win.charity_deduction) : null;
+
+              return (
+                <TableRow key={win.id}>
+                  <TableCell className="font-medium">{win.draw_name || "Legacy Draw"}</TableCell>
+
+                  {/* Prize pool column */}
+                  <TableCell>
+                    {prizeAmount > 0 ? (
+                      <span className="font-semibold">${prizeAmount.toFixed(2)}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+
+                  {/* Net credited column */}
+                  <TableCell>
+                    {netPayout != null ? (
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-emerald-500">${netPayout.toFixed(2)}</p>
+                        {charityDeduction != null && charityDeduction > 0 && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <HeartHandshake className="h-3 w-3 text-rose-400" />
+                            −${charityDeduction.toFixed(2)} charity
+                          </p>
+                        )}
+                      </div>
+                    ) : win.status === "paid" ? (
+                      <span className="text-muted-foreground text-sm">Processing</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+
+                  <TableCell>
+                    <Badge variant={win.status === "paid" ? "success" : "secondary"}>
+                      {(win.status || "pending").replace(/_/g, " ")}
+                    </Badge>
+                  </TableCell>
+
+                  <TableCell className="text-right text-muted-foreground">
+                    {win.selected_at ? new Date(win.selected_at).toLocaleDateString() : "—"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>

@@ -1,9 +1,9 @@
-import { pool } from "@/lib/db";
-import { SPACING } from "@/lib/design-tokens";
+import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HeartHandshake } from "lucide-react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { cookies } from "next/headers";
 
 // Prevent static pre-rendering at build time — data must be fetched at request time
 export const dynamic = "force-dynamic";
@@ -14,11 +14,17 @@ export const metadata = {
 };
 
 export default async function CharitiesPage() {
-  const result = await pool.query(
-    "SELECT id, name, description FROM public.charities ORDER BY name ASC"
-  );
-  
-  const charities = result.rows || [];
+  const supabase = createClient(await cookies());
+  const { data, error } = await supabase
+    .from("charities")
+    .select("id, name, description")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Failed to fetch charities:", error.message);
+  }
+
+  const charities = data || [];
 
   return (
     <div className="min-h-screen bg-background text-foreground pt-24 pb-24 px-4 sm:px-6 lg:px-8 font-sans">

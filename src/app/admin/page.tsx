@@ -40,7 +40,14 @@ export default async function AdminDashboardPage() {
   ] = await Promise.all([
     pool.query(`SELECT COUNT(*)::int as count FROM public.users`),
     pool.query(`SELECT COUNT(*)::int as count FROM public.subscriptions WHERE status = 'active'`),
-    pool.query(`SELECT * FROM public.draw_events ORDER BY created_at DESC LIMIT 10`),
+    pool.query(`
+      SELECT de.*, 
+        COALESCE(pp.total_amount, 0) as prize_pool,
+        pp.is_locked as pool_locked
+      FROM public.draw_events de
+      LEFT JOIN public.prize_pools pp ON pp.draw_id = de.id
+      ORDER BY de.created_at DESC LIMIT 10
+    `),
     pool.query(`
       SELECT dw.*, de.name as draw_name, u.full_name, u.email 
       FROM public.draw_winners dw 
