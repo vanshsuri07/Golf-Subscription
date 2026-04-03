@@ -43,7 +43,15 @@ export default async function DashboardPage() {
     supabase.from("charity_contributions").select("amount").eq("user_id", user.id),
     supabase
       .from("draw_winners")
-      .select(`*, draw_events(name), net_payout, charity_deduction, prize_pools(total_amount)`)
+      .select(`
+        *,
+        draw_events(
+          name,
+          prize_pools(total_amount)
+        ),
+        net_payout,
+        charity_deduction
+      `)
       .eq("user_id", user.id)
       .order("selected_at", { ascending: false }),
     supabase
@@ -74,7 +82,8 @@ export default async function DashboardPage() {
   // Wallet / winning data
   const walletBalance = Number((profile as any)?.wallet_balance) || 0;
   const totalGrossWinnings = wins.reduce((sum: number, w: any) => {
-    return sum + (w.prize_pools?.total_amount ? Number(w.prize_pools.total_amount) : 0);
+    const prizePool = w.draw_events?.prize_pools?.[0]?.total_amount || 0;
+    return sum + Number(prizePool);
   }, 0);
   const totalCharityDonated = wins.reduce((sum: number, w: any) => {
     return sum + (w.charity_deduction ? Number(w.charity_deduction) : 0);
@@ -90,7 +99,7 @@ export default async function DashboardPage() {
   const recentWinsNormalised = wins.map((w: any) => ({
     ...w,
     draw_name: w.draw_events?.name,
-    prize_amount: w.prize_pools?.total_amount,
+    prize_amount: w.draw_events?.prize_pools?.[0]?.total_amount || 0,
   }));
 
   return (

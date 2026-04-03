@@ -33,7 +33,7 @@ export default async function AdminWinnersPage() {
       verified_at,
       user_id,
       draw_events(name, executed_at),
-      users(email, full_name),
+      users!winners_user_id_fkey(email, full_name),
       prize_pools(locked_amount)
     `)
     .order("draw_events(executed_at)", { ascending: false });

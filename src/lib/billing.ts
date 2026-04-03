@@ -1,4 +1,9 @@
-import { pool } from "./db";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function upsertSubscription(data: {
   userId: string;
@@ -9,36 +14,25 @@ export async function upsertSubscription(data: {
   currentPeriodEnd: Date;
   cancelAtPeriodEnd: boolean;
 }) {
-  const query = `
-    INSERT INTO public.subscriptions (
-      user_id,
-      stripe_customer_id,
-      stripe_subscription_id,
-      status,
-      price_id,
-      current_period_end,
-      cancel_at_period_end,
-      updated_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-    ON CONFLICT (stripe_subscription_id)
-    DO UPDATE SET
-      status = EXCLUDED.status,
-      price_id = EXCLUDED.price_id,
-      current_period_end = EXCLUDED.current_period_end,
-      cancel_at_period_end = EXCLUDED.cancel_at_period_end,
-      updated_at = NOW();
-  `;
+  const { error } = await supabaseAdmin
+    .from("subscriptions")
+    .upsert({
+      user_id: data.userId,
+      stripe_customer_id: data.stripeCustomerId,
+      stripe_subscription_id: data.stripeSubscriptionId,
+      status: data.status,
+      price_id: data.priceId,
+      current_period_end: data.currentPeriodEnd.toISOString(),
+      cancel_at_period_end: data.cancelAtPeriodEnd,
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: "stripe_subscription_id"
+    });
 
-  await pool.query(query, [
-    data.userId,
-    data.stripeCustomerId,
-    data.stripeSubscriptionId,
-    data.status,
-    data.priceId,
-    data.currentPeriodEnd,
-    data.cancelAtPeriodEnd,
-  ]);
+  if (error) {
+    console.error("upsertSubscription Error:", error);
+    throw error;
+  }
 }
 
 export async function updateSubscriptionStatus(
@@ -47,28 +41,26 @@ export async function updateSubscriptionStatus(
   currentPeriodEnd?: Date,
   cancelAtPeriodEnd?: boolean
 ) {
-  let query = `
-    UPDATE public.subscriptions 
-    SET 
-      status = $2, 
-      updated_at = NOW()
-  `;
-  const params: any[] = [stripeSubscriptionId, status];
+  const updateData: any = {
+    status,
+    updated_at: new Date().toISOString()
+  };
 
-  let paramIndex = 3;
   if (currentPeriodEnd) {
-    query += `, current_period_end = $${paramIndex}`;
-    params.push(currentPeriodEnd);
-    paramIndex++;
+    updateData.current_period_end = currentPeriodEnd.toISOString();
   }
   
   if (cancelAtPeriodEnd !== undefined) {
-    query += `, cancel_at_period_end = $${paramIndex}`;
-    params.push(cancelAtPeriodEnd);
-    paramIndex++;
+    updateData.cancel_at_period_end = cancelAtPeriodEnd;
   }
 
-  query += ` WHERE stripe_subscription_id = $1`;
+  const { error } = await supabaseAdmin
+    .from("subscriptions")
+    .update(updateData)
+    .eq("stripe_subscription_id", stripeSubscriptionId);
 
-  await pool.query(query, params);
+  if (error) {
+    console.error("updateSubscriptionStatus Error:", error);
+    throw error;
+  }
 }

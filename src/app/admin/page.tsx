@@ -46,7 +46,7 @@ export default async function AdminDashboardPage() {
       .limit(10),
     supabase
       .from("draw_winners")
-      .select("*, draw_events(name), users(full_name, email)")
+      .select("*, draw_events(name), users!winners_user_id_fkey(full_name, email)")
       .neq("status", "paid")
       .order("selected_at", { ascending: false }),
     supabase
