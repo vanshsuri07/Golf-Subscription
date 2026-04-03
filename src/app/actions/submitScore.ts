@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import { pool } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 export async function submitScore(score: number): Promise<{ success: boolean; message?: string }> {
@@ -36,20 +35,25 @@ export async function submitScore(score: number): Promise<{ success: boolean; me
     }
 
     // 4. Check active subscription
-    const subResult = await pool.query(
-      `SELECT status FROM public.subscriptions WHERE user_id = $1 AND status = 'active' LIMIT 1`,
-      [user.id]
-    );
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("status")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .limit(1)
+      .single();
 
-    if (subResult.rows.length === 0) {
+    if (!sub) {
       return { success: false, message: "Active subscription required to submit scores." };
     }
 
     // 5. Call RPC submit_score
-    await pool.query(
-      `SELECT public.submit_score($1, $2)`,
-      [user.id, score]
-    );
+    const { error: rpcError } = await supabase.rpc("submit_score", {
+      p_user_id: user.id,
+      p_score: score,
+    });
+
+    if (rpcError) throw rpcError;
 
     revalidatePath("/scores");
     revalidatePath("/dashboard");

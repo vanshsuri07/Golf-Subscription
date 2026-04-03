@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import { pool } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 export async function selectCharity(charityId: string) {
@@ -15,20 +14,24 @@ export async function selectCharity(charityId: string) {
     }
 
     // Validate if the charity_id exists and is active
-    const charityCheck = await pool.query(
-      `SELECT id FROM public.charities WHERE id = $1 AND is_active = true`,
-      [charityId]
-    );
+    const { data: charity } = await supabase
+      .from("charities")
+      .select("id")
+      .eq("id", charityId)
+      .eq("is_active", true)
+      .single();
 
-    if (charityCheck.rows.length === 0) {
+    if (!charity) {
       return { success: false, message: "Invalid or inactive charity selected." };
     }
 
     // Update user's charity_id
-    await pool.query(
-      `UPDATE public.users SET charity_id = $1 WHERE id = $2`,
-      [charityId, user.id]
-    );
+    const { error } = await supabase
+      .from("users")
+      .update({ charity_id: charityId })
+      .eq("id", user.id);
+
+    if (error) throw error;
 
     revalidatePath("/charity");
     revalidatePath("/dashboard");

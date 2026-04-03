@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { pool } from "@/lib/db";
 import CharityClient from "./CharityClient";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -20,25 +19,29 @@ export default async function CharityPage() {
   }
 
   // Fetch charities
-  const activeCharitiesResult = await pool.query(`
-    SELECT id, name, description 
-    FROM public.charities 
-    WHERE is_active = true 
-    ORDER BY name ASC
-  `);
+  const { data: charities } = await supabase
+    .from("charities")
+    .select("id, name, description")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
 
   // Fetch current user selection & summary
-  const userStatsResult = await pool.query(`
-    SELECT u.charity_id, cs.total_contribution 
-    FROM public.users u
-    LEFT JOIN public.charity_summary cs ON u.id = cs.user_id AND cs.charity_id = u.charity_id
-    WHERE u.id = $1
-  `, [user.id]);
+  const { data: userRow } = await supabase
+    .from("users")
+    .select("charity_id")
+    .eq("id", user.id)
+    .single();
 
-  const charities = activeCharitiesResult.rows;
-  const userStats = userStatsResult.rows[0];
-  const userCharityId = userStats?.charity_id || null;
-  const totalContribution = userStats?.total_contribution || "0.00";
+  const userCharityId = (userRow as any)?.charity_id || null;
+
+  const { data: contributionRow } = await supabase
+    .from("charity_summary")
+    .select("total_contribution")
+    .eq("user_id", user.id)
+    .eq("charity_id", userCharityId)
+    .single();
+
+  const totalContribution = (contributionRow as any)?.total_contribution || "0.00";
 
   return (
     <div className="min-h-screen bg-background text-foreground pt-8 pb-24 px-4 sm:px-6 lg:px-8 font-sans">
@@ -76,7 +79,7 @@ export default async function CharityPage() {
 
         {/* Charity Selector Client Component */}
         <CharityClient
-          charities={charities}
+          charities={charities ?? []}
           initialSelectedId={userCharityId}
         />
       </div>

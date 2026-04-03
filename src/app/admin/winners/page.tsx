@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { pool } from "@/lib/db";
 import { WinnersTable } from "./WinnersTable";
 
 export const metadata = {
@@ -24,31 +23,32 @@ export default async function AdminWinnersPage() {
     redirect("/dashboard");
   }
 
-  // Get winners
-  const result = await pool.query(`
-    SELECT 
-      dw.id as winner_id,
-      dw.status,
-      dw.rejection_reason,
-      dw.verified_at,
-      u.id as user_id,
-      u.email as user_email,
-      u.full_name as user_name,
-      de.name as draw_name,
-      de.executed_at,
-      pp.locked_amount as prize_amount
-    FROM public.draw_winners dw
-    JOIN public.users u ON dw.user_id = u.id
-    JOIN public.draw_events de ON dw.draw_id = de.id
-    LEFT JOIN public.prize_pools pp ON de.id = pp.draw_id
-    ORDER BY de.executed_at DESC
-  `);
+  // Get winners with joined data
+  const { data: rawWinners } = await supabase
+    .from("draw_winners")
+    .select(`
+      id,
+      status,
+      rejection_reason,
+      verified_at,
+      user_id,
+      draw_events(name, executed_at),
+      users(email, full_name),
+      prize_pools(locked_amount)
+    `)
+    .order("draw_events(executed_at)", { ascending: false });
 
-  const winners = result.rows.map(row => ({
-    ...row,
-    prize_amount: row.prize_amount ? Number(row.prize_amount) : 0,
-    executed_at: row.executed_at ? new Date(row.executed_at).toISOString() : null,
-    verified_at: row.verified_at ? new Date(row.verified_at).toISOString() : null
+  const winners = (rawWinners || []).map((row: any) => ({
+    winner_id: row.id,
+    status: row.status,
+    rejection_reason: row.rejection_reason,
+    verified_at: row.verified_at ? new Date(row.verified_at).toISOString() : null,
+    user_id: row.user_id,
+    user_email: row.users?.email,
+    user_name: row.users?.full_name,
+    draw_name: row.draw_events?.name,
+    executed_at: row.draw_events?.executed_at ? new Date(row.draw_events.executed_at).toISOString() : null,
+    prize_amount: row.prize_pools?.[0]?.locked_amount ? Number(row.prize_pools[0].locked_amount) : 0,
   }));
 
   return (

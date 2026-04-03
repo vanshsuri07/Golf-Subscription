@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { pool } from "@/lib/db";
 import { ScoreCard } from "./score-card";
 import { CharityCard } from "./charity-card";
 import { DrawsTable } from "./draws-table";
@@ -26,71 +25,73 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  // Fetch all data in parallel using direct pool queries (avoids RLS issues)
+  // Fetch all data in parallel using the Supabase client (works in serverless/production)
   const [
-    profileResult,
-    subscriptionResult,
-    scoresResult,
-    drawEventsResult,
-    charityContributionsResult,
-    recentWinsResult,
-    userCharityResult,
-    activePrizePoolResult,
+    { data: profile },
+    { data: subscriptionRows },
+    { data: scores },
+    { data: drawEventRows },
+    { data: charityContribRows },
+    { data: recentWins },
+    { data: userCharityRows },
+    { data: prizePoolRows },
   ] = await Promise.all([
-    pool.query(`SELECT * FROM public.users WHERE id = $1`, [user.id]),
-    pool.query(`SELECT * FROM public.subscriptions WHERE user_id = $1 AND status = 'active' LIMIT 1`, [user.id]),
-    pool.query(`SELECT * FROM public.scores WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5`, [user.id]),
-    pool.query(`SELECT * FROM public.draw_events WHERE is_active = true ORDER BY created_at DESC LIMIT 1`),
-    pool.query(`SELECT SUM(amount) as total FROM public.charity_contributions WHERE user_id = $1`, [user.id]),
-    pool.query(`
-      SELECT dw.*, de.name as draw_name,
-        (SELECT pp.total_amount FROM public.prize_pools pp WHERE pp.draw_id = de.id LIMIT 1) as prize_amount,
-        dw.net_payout,
-        dw.charity_deduction
-      FROM public.draw_winners dw 
-      JOIN public.draw_events de ON dw.draw_id = de.id 
-      WHERE dw.user_id = $1 
-      ORDER BY dw.selected_at DESC
-    `, [user.id]),
-    pool.query(`
-      SELECT u.charity_id, c.name as charity_name 
-      FROM public.users u 
-      LEFT JOIN public.charities c ON u.charity_id = c.id 
-      WHERE u.id = $1
-    `, [user.id]),
-    // Active draw prize pool for the prize card
-    pool.query(`
-      SELECT de.name as draw_name, pp.total_amount, pp.charity_rate
-      FROM public.draw_events de
-      JOIN public.prize_pools pp ON pp.draw_id = de.id
-      WHERE de.is_active = true
-      ORDER BY de.created_at DESC
-      LIMIT 1
-    `),
+    supabase.from("users").select("*").eq("id", user.id).single(),
+    supabase.from("subscriptions").select("*").eq("user_id", user.id).eq("status", "active").limit(1),
+    supabase.from("scores").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(5),
+    supabase.from("draw_events").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(1),
+    supabase.from("charity_contributions").select("amount").eq("user_id", user.id),
+    supabase
+      .from("draw_winners")
+      .select(`*, draw_events(name), net_payout, charity_deduction, prize_pools(total_amount)`)
+      .eq("user_id", user.id)
+      .order("selected_at", { ascending: false }),
+    supabase
+      .from("users")
+      .select("charity_id, charities(name)")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("draw_events")
+      .select("name, prize_pools(total_amount, charity_rate)")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1),
   ]);
 
-  const profile = profileResult.rows[0] || null;
-  const subscription = subscriptionResult.rows[0] || null;
-  const scores = scoresResult.rows || [];
-  const activeDraw = drawEventsResult.rows[0] || null;
-  const totalContributions = Number(charityContributionsResult.rows[0]?.total) || 0;
-  const recentWins = recentWinsResult.rows || [];
-  const userCharity = userCharityResult.rows[0] || null;
+  const subscription = subscriptionRows?.[0] || null;
+  const activeDraw = drawEventRows?.[0] || null;
+  const totalContributions = (charityContribRows || []).reduce(
+    (sum: number, r: any) => sum + (Number(r.amount) || 0),
+    0
+  );
+  const wins = recentWins || [];
+  const userCharity = userCharityRows
+    ? { charity_id: (userCharityRows as any).charity_id, charity_name: (userCharityRows as any).charities?.name }
+    : null;
   const hasSubscription = !!subscription;
 
   // Wallet / winning data
-  const walletBalance = Number(profile?.wallet_balance) || 0;
-  const totalGrossWinnings = recentWins.reduce((sum: number, w: any) => {
-    return sum + (w.prize_amount ? Number(w.prize_amount) : 0);
+  const walletBalance = Number((profile as any)?.wallet_balance) || 0;
+  const totalGrossWinnings = wins.reduce((sum: number, w: any) => {
+    return sum + (w.prize_pools?.total_amount ? Number(w.prize_pools.total_amount) : 0);
   }, 0);
-  const totalCharityDonated = recentWins.reduce((sum: number, w: any) => {
+  const totalCharityDonated = wins.reduce((sum: number, w: any) => {
     return sum + (w.charity_deduction ? Number(w.charity_deduction) : 0);
   }, 0);
 
   // Active prize pool
-  const prizePoolRow = activePrizePoolResult.rows[0] || null;
-  const activePrizePool = Number(prizePoolRow?.total_amount) || 0;
-  const activePrizeCharityRate = Number(prizePoolRow?.charity_rate) || 0.20;
+  const prizePoolRow = (prizePoolRows?.[0] as any) || null;
+  const prizePoolData = prizePoolRow?.prize_pools?.[0] || null;
+  const activePrizePool = Number(prizePoolData?.total_amount) || 0;
+  const activePrizeCharityRate = Number(prizePoolData?.charity_rate) || 0.20;
+
+  // Normalise wins shape for DrawsTable (expects draw_name, prize_amount)
+  const recentWinsNormalised = wins.map((w: any) => ({
+    ...w,
+    draw_name: w.draw_events?.name,
+    prize_amount: w.prize_pools?.total_amount,
+  }));
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-8 max-w-7xl">
@@ -131,7 +132,7 @@ export default async function DashboardPage() {
         </Card>
 
         {/* Score Tracker */}
-        <ScoreCard scores={scores} />
+        <ScoreCard scores={scores ?? []} />
 
         {/* Charity Impact */}
         <CharityCard charityName={userCharity?.charity_name} totalContribution={totalContributions} />
@@ -175,7 +176,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <DrawsTable recentWins={recentWins} />
+        <DrawsTable recentWins={recentWinsNormalised} />
       </div>
     </div>
   );

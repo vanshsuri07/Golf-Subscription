@@ -2,7 +2,6 @@ import { stripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { pool } from "@/lib/db";
 
 export async function POST(req: Request) {
   try {
@@ -17,16 +16,10 @@ export async function POST(req: Request) {
     const email = user.email;
 
     // 0. Ensure user exists in public.users (safety sync for trigger delay)
-    const userCheck = await pool.query("SELECT id FROM public.users WHERE id = $1", [userId]);
-    if (userCheck.rows.length === 0) {
-      console.log(`User ${userId} not found in public.users, syncing now...`);
-      await pool.query(
-        `INSERT INTO public.users (id, email, full_name, role) 
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO NOTHING`,
-        [userId, email, user.user_metadata?.full_name || "", "subscriber"]
-      );
-    }
+    await supabase.from("users").upsert(
+      { id: userId, email: email ?? "", full_name: user.user_metadata?.full_name || "", role: "subscriber" },
+      { onConflict: "id", ignoreDuplicates: true }
+    );
 
     // Parse request body for plan selection
     const body = await req.json().catch(() => ({}));
@@ -42,39 +35,37 @@ export async function POST(req: Request) {
 
     // 1. Fetch user to see if they have a stripe customer id
     let customerId: string | undefined;
-    const subResult = await pool.query(
-      "SELECT stripe_customer_id, status, id FROM public.subscriptions WHERE user_id = $1 LIMIT 1",
-      [userId]
-    );
+    const { data: subRow } = await supabase
+      .from("subscriptions")
+      .select("stripe_customer_id, status, id")
+      .eq("user_id", userId)
+      .limit(1)
+      .single();
 
-    if (subResult.rows.length > 0 && subResult.rows[0].status === 'active') {
+    if (subRow?.status === "active") {
       return NextResponse.json({ url: "/dashboard" });
     }
 
-    if (subResult.rows.length > 0 && subResult.rows[0].stripe_customer_id) {
-      customerId = subResult.rows[0].stripe_customer_id;
+    if (subRow?.stripe_customer_id) {
+      customerId = subRow.stripe_customer_id as string;
     } else {
       // 2. Create Stripe customer if missing
       const customer = await stripe.customers.create({
         email: email || undefined,
-        metadata: {
-          user_id: userId,
-        },
+        metadata: { user_id: userId },
       });
       customerId = customer.id;
 
       // 3. Store stripe_customer_id
-      if (subResult.rows.length > 0) {
-        await pool.query(
-          "UPDATE public.subscriptions SET stripe_customer_id = $1 WHERE user_id = $2",
-          [customerId, userId]
-        );
+      if (subRow) {
+        await supabase
+          .from("subscriptions")
+          .update({ stripe_customer_id: customerId })
+          .eq("user_id", userId);
       } else {
-        await pool.query(
-          `INSERT INTO public.subscriptions (user_id, stripe_customer_id, status)
-           VALUES ($1, $2, 'incomplete')`,
-          [userId, customerId]
-        );
+        await supabase
+          .from("subscriptions")
+          .insert({ user_id: userId, stripe_customer_id: customerId, status: "incomplete" });
       }
     }
 

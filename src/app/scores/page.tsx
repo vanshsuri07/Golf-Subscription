@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ScoreForm } from "./ScoreForm";
-import { pool } from "@/lib/db";
 import { LucideTrophy, LucideTrendingUp, LucideActivity, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
@@ -20,12 +19,13 @@ export default async function ScoresPage() {
   }
 
   // Fetch the summary details
-  const result = await pool.query(
-    "SELECT last_5_avg, last_5_scores FROM public.user_score_summary WHERE user_id = $1",
-    [user.id]
-  );
+  const { data: summaryRow } = await supabase
+    .from("user_score_summary")
+    .select("last_5_avg, last_5_scores")
+    .eq("user_id", user.id)
+    .single();
 
-  const summary = result.rows[0] || { last_5_avg: null, last_5_scores: [] };
+  const summary = summaryRow || { last_5_avg: null, last_5_scores: [] };
   const lastScores: number[] = summary.last_5_scores || [];
   const average = summary.last_5_avg ? parseFloat(summary.last_5_avg).toFixed(1) : "N/A";
 

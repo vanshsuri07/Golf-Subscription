@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { pool } from "@/lib/db";
 import { Metrics } from "./metrics";
 import { DrawControl } from "./draw-control";
 import { WinnersQueue } from "./winners-queue";
@@ -28,52 +27,59 @@ export default async function AdminDashboardPage() {
 
   if (profile?.role !== "admin") redirect("/dashboard");
 
-  // Fetch aggregated data using pool to avoid RLS issues
+  // Fetch aggregated platform metrics
   const [
-    usersCountResult,
-    subsCountResult,
-    recentDrawsResult,
-    winnersResult,
-    allUsersResult,
-    prizePoolResult,
-    charityFundsResult,
+    { count: usersCount },
+    { count: subsCount },
+    { data: recentDraws },
+    { data: winners },
+    { data: allUsers },
+    { data: prizePoolRows },
+    { data: charityContribRows },
   ] = await Promise.all([
-    pool.query(`SELECT COUNT(*)::int as count FROM public.users`),
-    pool.query(`SELECT COUNT(*)::int as count FROM public.subscriptions WHERE status = 'active'`),
-    pool.query(`
-      SELECT de.*, 
-        COALESCE(pp.total_amount, 0) as prize_pool,
-        pp.is_locked as pool_locked
-      FROM public.draw_events de
-      LEFT JOIN public.prize_pools pp ON pp.draw_id = de.id
-      ORDER BY de.created_at DESC LIMIT 10
-    `),
-    pool.query(`
-      SELECT dw.*, de.name as draw_name, u.full_name, u.email 
-      FROM public.draw_winners dw 
-      JOIN public.draw_events de ON dw.draw_id = de.id 
-      JOIN public.users u ON dw.user_id = u.id 
-      WHERE dw.status != 'paid' 
-      ORDER BY dw.selected_at DESC
-    `),
-    pool.query(`
-      SELECT u.id, u.full_name, u.email, u.role, u.created_at,
-        (SELECT s.status FROM public.subscriptions s WHERE s.user_id = u.id AND s.status = 'active' LIMIT 1) as sub_status,
-        (SELECT last_5_scores FROM public.user_score_summary uss WHERE uss.user_id = u.id LIMIT 1) as scores
-      FROM public.users u 
-      ORDER BY u.created_at DESC LIMIT 50
-    `),
-    pool.query(`SELECT COALESCE(SUM(total_amount), 0)::numeric as total FROM public.prize_pools WHERE is_locked = false`),
-    pool.query(`SELECT COALESCE(SUM(amount), 0)::numeric as total FROM public.charity_contributions`),
+    supabase.from("users").select("*", { count: "exact", head: true }),
+    supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active"),
+    supabase
+      .from("draw_events")
+      .select("*, prize_pools(total_amount, is_locked)")
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("draw_winners")
+      .select("*, draw_events(name), users(full_name, email)")
+      .neq("status", "paid")
+      .order("selected_at", { ascending: false }),
+    supabase
+      .from("users")
+      .select("id, full_name, email, role, created_at, subscriptions(status), user_score_summary(last_5_scores)")
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase.from("prize_pools").select("total_amount").eq("is_locked", false),
+    supabase.from("charity_contributions").select("amount"),
   ]);
 
-  const usersCount = usersCountResult.rows[0]?.count || 0;
-  const subsCount = subsCountResult.rows[0]?.count || 0;
-  const recentDraws = recentDrawsResult.rows || [];
-  const winners = winnersResult.rows || [];
-  const allUsers = allUsersResult.rows || [];
-  const totalPrizePool = Number(prizePoolResult.rows[0]?.total) || 0;
-  const charityFunds = Number(charityFundsResult.rows[0]?.total) || 0;
+  const totalPrizePool = (prizePoolRows || []).reduce((sum: number, r: any) => sum + Number(r.total_amount || 0), 0);
+  const charityFunds = (charityContribRows || []).reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+
+  // Normalise shapes for child components
+  const drawsNormalised = (recentDraws || []).map((d: any) => ({
+    ...d,
+    prize_pool: d.prize_pools?.[0]?.total_amount ?? 0,
+    pool_locked: d.prize_pools?.[0]?.is_locked ?? false,
+  }));
+
+  const winnersNormalised = (winners || []).map((w: any) => ({
+    ...w,
+    draw_name: w.draw_events?.name,
+    full_name: w.users?.full_name,
+    email: w.users?.email,
+  }));
+
+  const usersNormalised = (allUsers || []).map((u: any) => ({
+    ...u,
+    sub_status: u.subscriptions?.[0]?.status ?? null,
+    scores: u.user_score_summary?.[0]?.last_5_scores ?? [],
+  }));
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-8 max-w-7xl">
@@ -83,8 +89,8 @@ export default async function AdminDashboardPage() {
       </div>
 
       <Metrics
-        totalSubscribers={usersCount}
-        activeSubscriptions={subsCount}
+        totalSubscribers={usersCount ?? 0}
+        activeSubscriptions={subsCount ?? 0}
         totalPrizePool={totalPrizePool}
         charityFunds={charityFunds}
       />
@@ -97,15 +103,15 @@ export default async function AdminDashboardPage() {
         </TabsList>
 
         <TabsContent value="draws" className="space-y-4">
-          <DrawControl draws={recentDraws} />
+          <DrawControl draws={drawsNormalised} />
         </TabsContent>
 
         <TabsContent value="winners" className="space-y-4">
-          <WinnersQueue winners={winners} />
+          <WinnersQueue winners={winnersNormalised} />
         </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
-          <UsersTable users={allUsers} />
+          <UsersTable users={usersNormalised} />
         </TabsContent>
       </Tabs>
     </div>

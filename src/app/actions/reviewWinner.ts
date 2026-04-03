@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import { pool } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 export async function reviewWinner(
@@ -28,10 +27,14 @@ export async function reviewWinner(
     throw new Error("Unauthorized");
   }
 
-  await pool.query(
-    `SELECT update_winner_status($1, $2, $3, $4)`,
-    [winnerId, status, user.id, reason ?? null]
-  );
+  const { error } = await supabase.rpc("update_winner_status", {
+    p_winner_id: winnerId,
+    p_status: status,
+    p_admin_id: user.id,
+    p_reason: reason ?? null,
+  });
+
+  if (error) throw error;
 
   revalidatePath("/admin");
   revalidatePath("/admin/winners");

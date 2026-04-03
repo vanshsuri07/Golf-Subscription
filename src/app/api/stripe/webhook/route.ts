@@ -1,7 +1,7 @@
 import { stripe } from "@/lib/stripe";
 import { upsertSubscription, updateSubscriptionStatus } from "@/lib/billing";
 import { NextResponse } from "next/server";
-import { pool } from "@/lib/db";
+import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 
 export async function POST(req: Request) {
@@ -13,6 +13,12 @@ export async function POST(req: Request) {
   }
 
   let event: Stripe.Event;
+
+  // Service-role client — no cookies needed, bypasses RLS
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   try {
     event = stripe.webhooks.constructEvent(
@@ -65,13 +71,13 @@ export async function POST(req: Request) {
         
         if (!userId) {
           // fallback to fetching from our DB by customer ID
-          const userLookup = await pool.query(
-            "SELECT user_id FROM public.subscriptions WHERE stripe_customer_id = $1 LIMIT 1", 
-            [subscription.customer as string]
-          );
-          if (userLookup.rows.length) {
-            userId = userLookup.rows[0].user_id;
-          }
+          const { data: subRow } = await supabaseAdmin
+            .from("subscriptions")
+            .select("user_id")
+            .eq("stripe_customer_id", subscription.customer as string)
+            .limit(1)
+            .single();
+          if (subRow) userId = (subRow as any).user_id;
         }
 
         if (userId) {
@@ -113,21 +119,22 @@ export async function POST(req: Request) {
         let userId: string | undefined;
 
         if (!userId) {
-          const userLookup = await pool.query(
-            "SELECT user_id FROM public.subscriptions WHERE stripe_customer_id = $1 LIMIT 1", 
-            [customerId]
-          );
-          if (userLookup.rows.length) {
-            userId = userLookup.rows[0].user_id;
-          }
+          const { data: subRow } = await supabaseAdmin
+            .from("subscriptions")
+            .select("user_id")
+            .eq("stripe_customer_id", customerId)
+            .limit(1)
+            .single();
+          if (subRow) userId = (subRow as any).user_id;
         }
 
         if (userId && invoice.id && invoice.amount_paid) {
             const amountInDollars = invoice.amount_paid / 100;
-            await pool.query(
-               `select allocate_revenue_to_pool($1, $2, $3)`,
-               [userId, invoice.id, amountInDollars]
-            );
+            await supabaseAdmin.rpc("allocate_revenue_to_pool", {
+              p_user_id: userId,
+              p_invoice_id: invoice.id,
+              p_amount: amountInDollars,
+            });
         }
 
         break;
